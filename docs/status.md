@@ -1,13 +1,15 @@
 # Status
 
-Feature development was paused on 2026-10-07 at the owner's request. The active
-work is extracting the preserved implementation into this standalone project.
-The standalone checks below passed on Windows; removal of the in-tree copy from
-c3d is still pending. This does not complete the former fracture milestone.
+The standalone extraction is complete. Feature development remains paused at
+the owner's request since 2026-10-07. The in-tree generator was removed in
+[c3d PR #328](https://github.com/fesoliveira014/c3d.c3l/pull/328), merged as
+`c0b0b058a2ba18cf8dc68d57692088370797d328` after review and passing Windows/Linux CI.
+This ownership change does not complete the former fracture milestone.
 
 The implementation checkpoint is
 [`b3170d04bf4406b377c9a13d97514caeb8bd0cdf`](https://github.com/fesoliveira014/c3d.c3l/commit/b3170d04bf4406b377c9a13d97514caeb8bd0cdf).
-The pinned c3d dependency is `bd90264bf0b5c9bd8948d4d4cb0087efb2dc79da`.
+The pinned c3d dependency is the extraction merge
+`c0b0b058a2ba18cf8dc68d57692088370797d328`.
 The namespace move to `fracture` changes package ownership, not the geometry
 algorithms. The [checkpoint record](fracture-checkpoint-status.md) distinguishes
 completed checks from unfinished acceptance.
@@ -46,6 +48,11 @@ outside the active source and test paths. They are not accepted fixes.
 | Manual `collision_oracle` exporter | Box-only export produced 24 cases with no reconstruction failures. |
 | Build-script FP guard | Rejects relaxed/fast math below O4. |
 
+The public consumer and both ordinary cooking groups also passed against the
+reviewed c3d removal commit, with no in-tree generator present. The merge has the
+same Git tree as that tested commit. The public consumer was rerun successfully
+against the final merge pin.
+
 The local setup initialized the real pinned submodules and generated the required
 shader embeds, while reusing pin-matched native artifacts. A fresh-download setup
 and Linux standalone run were not performed. These checks verify the extraction
@@ -61,8 +68,8 @@ Before resuming the remaining feature work:
 4. Implement the bake writer/loader, sidecar validation, transactional publication
    and runtime demonstration only when the owner explicitly resumes that scope.
 
-The decision and discussion history is retained in the
-[original tracking issue](https://github.com/fesoliveira014/c3d.c3l/issues/267#issuecomment-6047780415).
+The decision and discussion history was transferred to the open, paused
+[standalone tracking issue](https://github.com/fesoliveira014/c3d_fracture.c3l/issues/1).
 The old in-tree [collision PR](https://github.com/fesoliveira014/c3d.c3l/pull/326)
-preserves a draft checkpoint; it is not a claim that the remaining milestone
-acceptance passed. New standalone build checks will be recorded separately.
+was closed without merging after the extraction. Its checkpoint remains
+preserved; closing that draft does not claim the remaining acceptance passed.

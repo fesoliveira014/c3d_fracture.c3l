@@ -4,7 +4,7 @@ CPU Boolean and three-dimensional Voronoi fracture generation for C3, using
 [c3d](https://github.com/fesoliveira014/c3d.c3l) geometry types. The package provides
 `c3d_fracture`; its C3 module is `fracture`.
 
-**Status:** extraction checkpoint. Feature development is paused. Boolean/Voronoi
+**Status:** standalone extraction complete; feature development is paused. Boolean/Voronoi
 generation and collision reconstruction are preserved, with a known authored-point
 retention defect in point-limited collision subdivision. See [status](docs/status.md)
 before treating this checkpoint as complete fracture tooling.

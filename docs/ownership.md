@@ -37,10 +37,9 @@ c3d APIs. A future bake layer consumes them; it does not duplicate their loaders
 encoded-image ownership or native physics implementation.
 
 The former `c3d::physics::fracture` namespace is relocated to `fracture`. Consumers
-select the `c3d_fracture` package explicitly. The c3d removal and this standalone
-extraction are coordinated changes; the dependency pin may still contain the
-historical in-tree files until the removal is merged. No reverse dependency from
-c3d to this project is introduced.
+select the `c3d_fracture` package explicitly. The pinned c3d dependency includes
+[the generator removal](https://github.com/fesoliveira014/c3d.c3l/pull/328).
+No reverse dependency from c3d to this project is introduced.
 
 Feature development remains paused. The move preserves the existing checkpoint,
 its known limitations and evidence; it does not authorize finishing the deferred
