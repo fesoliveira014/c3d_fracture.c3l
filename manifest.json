@@ -1,0 +1,13 @@
+{
+  "provides": "c3d_fracture",
+  "sources": [ "src/**" ],
+  "targets": {
+    "linux-x64": {
+      "dependencies": [ "c3d" ]
+    },
+    "windows-x64": {
+      "wincrt": "static",
+      "dependencies": [ "c3d" ]
+    }
+  }
+}

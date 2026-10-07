@@ -1,0 +1,3 @@
+[submodule "lib/c3d.c3l"]
+	path = lib/c3d.c3l
+	url = https://github.com/fesoliveira014/c3d.c3l.git

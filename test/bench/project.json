@@ -1,0 +1,53 @@
+{
+  "langrev": "1",
+  "dependency-search-paths": [
+    "../../lib",
+    "../../lib/c3d.c3l/addons",
+    "../../lib/c3d.c3l/lib",
+    "../../lib/c3d.c3l/lib/gpu.c3l/lib",
+    "../../.."
+  ],
+  "dependencies": [
+    "c3d_fracture",
+    "c3d",
+    "gpu",
+    "vk",
+    "vma",
+    "spvreflect",
+    "sdl3",
+    "c3imgui",
+    "c3cg",
+    "cgltf",
+    "ufbx"
+  ],
+  "fp-math": "strict",
+  "wincrt": "static",
+  "output": "build",
+  "targets": {
+    "kernel_bench": {
+      "type": "executable",
+      "sources": [
+        "kernel_fixtures.c3",
+        "kernel_measurements.c3"
+      ]
+    },
+    "collision_oracle": {
+      "type": "executable",
+      "sources": [
+        "collision_oracle.c3"
+      ]
+    },
+    "components_scaling": {
+      "type": "test",
+      "sources": [
+        "components_scaling.c3"
+      ]
+    },
+    "boundary_scaling": {
+      "type": "test",
+      "sources": [
+        "boundary_scaling.c3"
+      ]
+    }
+  }
+}

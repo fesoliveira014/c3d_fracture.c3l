@@ -1,0 +1,172 @@
+module c3d::physics::fracture;
+
+import c3d;
+import std::math;
+
+fn void test_collision_authored_face_center_survives_both_hull_limits() @test {
+    check_authored_collision_fixture(0);
+}
+
+fn void test_collision_authored_edge_midpoint_survives_both_hull_limits() @test {
+    check_authored_collision_fixture(1);
+}
+
+fn void test_collision_authored_face_and_edge_points_keep_permuted_output_identical() @test {
+    check_authored_collision_fixture(2);
+}
+
+fn void authored_collision_fixture(ContainmentFixture* fixture, uint variant) @private {
+    append_box_fixture(fixture, { -1, -1, -1 }, { 1, 1, 1 });
+
+    if (variant != 1) {
+        uint[30] remaining;
+        remaining[..] = fixture.indices[6:30];
+        uint[12] fan = { 0, 2, 8, 2, 6, 8, 6, 4, 8, 4, 0, 8 };
+        fixture.indices[:12] = fan[..];
+        fixture.indices[12:30] = remaining[..];
+        fixture.positions[8] = { 0, 0, -1 };
+        fixture.identities[8] = 8;
+        fixture.vertex_count = 9;
+        fixture.triangle_count = 14;
+    }
+
+    if (variant != 0) {
+        uint vertex = fixture.vertex_count++;
+        fixture.positions[vertex] = { 0, -1, -1 };
+        fixture.identities[vertex] = vertex;
+        uint corners = fixture.triangle_count * TRIANGLE_CORNERS;
+        uint[108] original;
+        original[:corners] = fixture.indices[:corners];
+        uint written;
+
+        for (uint triangle = 0; triangle < fixture.triangle_count; triangle++) {
+            uint[TRIANGLE_CORNERS] face;
+            face[..] = original[triangle * TRIANGLE_CORNERS:TRIANGLE_CORNERS];
+            bool split;
+
+            for (uint corner = 0; corner < TRIANGLE_CORNERS; corner++) {
+                uint first = face[corner];
+                uint second = face[(corner + 1) % TRIANGLE_CORNERS];
+                if (!((first == 0 && second == 4) || (first == 4 && second == 0))) continue;
+
+                uint third = face[(corner + 2) % TRIANGLE_CORNERS];
+                fixture.indices[written++] = first;
+                fixture.indices[written++] = vertex;
+                fixture.indices[written++] = third;
+                fixture.indices[written++] = vertex;
+                fixture.indices[written++] = second;
+                fixture.indices[written++] = third;
+                split = true;
+                break;
+            }
+
+            if (!split) {
+                fixture.indices[written:TRIANGLE_CORNERS] = face[..];
+                written += TRIANGLE_CORNERS;
+            }
+        }
+
+        fixture.triangle_count = written / TRIANGLE_CORNERS;
+    }
+
+    fixture.mesh.geometry.positions = fixture.positions[:fixture.vertex_count];
+    fixture.mesh.geometry.indices = fixture.indices[:fixture.triangle_count * TRIANGLE_CORNERS];
+    fixture.mesh.topology_vertices = fixture.identities[:fixture.vertex_count];
+    fixture.mesh.triangle_materials = fixture.materials[:fixture.triangle_count];
+}
+
+fn void check_authored_collision_fixture(uint variant) @local {
+    FractureWorkspace workspace = collision_test_workspace();
+    defer destroy_fracture_workspace(&workspace);
+
+    foreach (limit : (uint[2]){ 128, 4 }) {
+        ContainmentFixture source;
+        authored_collision_fixture(&source, variant);
+        SolidScratch scratch = begin_solid_scratch(&workspace);
+        SolidDiagnostic diagnostic;
+        ValidatedSolid validated = validate_solid(
+            scratch: &scratch, source: source.mesh, grid: null, diagnostic: &diagnostic,
+        )!!;
+        assert(validated.surface.validated && validated.surface.topology.vertices.len == source.vertex_count);
+        PlaneInteger expected_volume = collision_solid_volume(scratch.exact, &validated.nesting)!!;
+
+        FracturePieceView piece = { .mesh = source.mesh };
+        FractureResult fragments = copy_fracture_result(mem, (&piece)[:1])!!;
+        defer destroy_fracture_result(&fragments);
+        FractureCollision collision = create_fracture_collision(
+            allocator: mem, workspace: &workspace, fragments: &fragments, max_hull_vertices: limit,
+        )!!;
+        defer destroy_fracture_collision(&collision);
+
+        assert(collision.hulls.len);
+        check_authored_collision_volume(&workspace, &collision, expected_volume);
+        foreach (hull : collision.hulls) assert(hull.piece_index == 0 && hull.points.len <= limit);
+        foreach (position : source.positions[:source.vertex_count]) {
+            bool found;
+            foreach (hull : collision.hulls) {
+                foreach (point : hull.points) {
+                    bool equal = true;
+                    for (uint axis = 0; axis < SPACE_AXES; axis++) {
+                        equal &= bitcast(position[axis], uint) == bitcast(point[axis], uint);
+                    }
+                    found |= equal;
+                }
+            }
+            assert(found);
+        }
+        assert(((ExactScratch*)workspace.storage.ptr).count == 0);
+
+        if (variant != 2) continue;
+        for (uint triangle = 0; triangle < source.triangle_count / 2; triangle++) {
+            for (uint corner = 0; corner < TRIANGLE_CORNERS; corner++) {
+                uint first = triangle * TRIANGLE_CORNERS + corner;
+                uint second = (source.triangle_count - triangle - 1) * TRIANGLE_CORNERS + corner;
+                uint saved = source.indices[first];
+                source.indices[first] = source.indices[second];
+                source.indices[second] = saved;
+            }
+        }
+
+        destroy_fracture_result(&fragments);
+        fragments = copy_fracture_result(mem, (&piece)[:1])!!;
+        FractureCollision repeated = create_fracture_collision(
+            allocator: mem, workspace: &workspace, fragments: &fragments, max_hull_vertices: limit,
+        )!!;
+        defer destroy_fracture_collision(&repeated);
+
+        assert(collision.hulls.len == repeated.hulls.len);
+        foreach (uint hull, first : collision.hulls) {
+            FractureHullView second = repeated.hulls[hull];
+            assert(first.piece_index == second.piece_index && first.points.len == second.points.len);
+            foreach (uint vertex, position : first.points) {
+                for (uint axis = 0; axis < SPACE_AXES; axis++) {
+                    assert(bitcast(position[axis], uint) == bitcast(second.points[vertex][axis], uint));
+                }
+            }
+        }
+    }
+}
+
+fn void check_authored_collision_volume(
+    FractureWorkspace* workspace,
+    FractureCollision* collision,
+    PlaneInteger expected,
+) @local {
+    SolidScratch scratch = begin_solid_scratch(workspace);
+    PlaneInteger total;
+
+    foreach (hull : collision.hulls) {
+        usz saved = scratch.used;
+        defer scratch.used = saved;
+        CollisionHullSurface boundary = build_collision_hull(&scratch, hull.points)!!;
+        SolidMeshView mesh = collision_indexed_mesh(&scratch, boundary.points, boundary.indices)!!;
+        SolidDiagnostic diagnostic;
+        ValidatedSolid validated = validate_solid(
+            scratch: &scratch, source: mesh, grid: null, diagnostic: &diagnostic,
+        )!!;
+        PlaneInteger volume = collision_solid_volume(scratch.exact, &validated.nesting)!!;
+        accumulate_surface_volume(scratch.exact, &total, volume.view())!!;
+    }
+
+    assert(!total.negative && !expected.negative && !compare_magnitude(total.view(), expected.view()));
+}

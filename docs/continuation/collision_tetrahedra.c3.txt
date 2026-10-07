@@ -1,0 +1,120 @@
+module c3d::physics::fracture;
+
+import std::math;
+import std::sort;
+
+const uint[TRIANGLE_CORNERS][COLLISION_TETRAHEDRON_VERTICES] TETRAHEDRON_BOUNDARY @local = {
+    { 0, 2, 1 }, { 0, 1, 3 }, { 0, 3, 2 }, { 1, 2, 3 },
+};
+
+struct CollisionTetrahedron @private {
+    Vec3[COLLISION_TETRAHEDRON_VERTICES] points;
+    CollisionTetrahedron* next;
+}
+
+struct CollisionTetrahedra @private {
+    CollisionTetrahedron* first;
+    usz count;
+}
+
+fn CollisionTetrahedra? tetrahedralize_collision_hull(
+    SolidScratch* scratch,
+    CollisionHullSurface* hull,
+    Vec3 anchor,
+    Vec3[] protected_points,
+) @private {
+    usz saved = scratch.used;
+    defer catch scratch.used = saved;
+    Vec3[] ordered = reserve_elements(scratch, Vec3, protected_points.len)!;
+    ordered[..] = protected_points[..];
+    sort::quicksort(ordered, &compare_protected_tetrahedron_points);
+
+    CollisionTetrahedra result;
+    for (usz face = 0; face < hull.indices.len; face += TRIANGLE_CORNERS) {
+        CollisionTetrahedron* tetrahedron = &reserve_elements(scratch, CollisionTetrahedron, 1)![0];
+        *tetrahedron = {
+            .points = {
+                anchor, hull.points[hull.indices[face]],
+                hull.points[hull.indices[face + 1]], hull.points[hull.indices[face + 2]],
+            },
+            .next = result.first,
+        };
+        result.first = tetrahedron;
+        result.count++;
+    }
+
+    foreach (point : ordered) {
+        if (tetrahedra_have_point(&result, point)) continue;
+
+        CollisionTetrahedra refined;
+        bool inserted;
+        for (CollisionTetrahedron* current = result.first; current;) {
+            CollisionTetrahedron* next = current.next;
+            Vec3[COLLISION_TETRAHEDRON_VERTICES] original = current.points;
+            int[COLLISION_TETRAHEDRON_VERTICES] sides;
+            bool contains = true;
+
+            foreach (uint face, indices : TETRAHEDRON_BOUNDARY) {
+                sides[face] = float_orientation(scratch.exact, {
+                    original[indices[0]], original[indices[1]], original[indices[2]], point,
+                })!;
+                if (sides[face] > 0) {
+                    contains = false;
+                    break;
+                }
+            }
+
+            if (!contains) {
+                current.next = refined.first;
+                refined.first = current;
+                refined.count++;
+                current = next;
+                continue;
+            }
+
+            bool reused;
+            foreach (uint face, indices : TETRAHEDRON_BOUNDARY) {
+                if (!sides[face]) continue;
+
+                CollisionTetrahedron* child = reused
+                    ? &reserve_elements(scratch, CollisionTetrahedron, 1)![0] : current;
+                *child = {
+                    .points = { point, original[indices[0]], original[indices[1]], original[indices[2]] },
+                    .next = refined.first,
+                };
+                refined.first = child;
+                refined.count++;
+                reused = true;
+                inserted = true;
+            }
+            current = next;
+        }
+
+        if (!inserted) return NUMERICAL_FAILURE~;
+        result = refined;
+    }
+    return result;
+}
+
+fn bool tetrahedra_have_point(CollisionTetrahedra* tetrahedra, Vec3 point) @local {
+    for (CollisionTetrahedron* tetrahedron = tetrahedra.first; tetrahedron; tetrahedron = tetrahedron.next) {
+        foreach (vertex : tetrahedron.points) {
+            bool equal = true;
+            for (uint axis = 0; axis < SPACE_AXES; axis++) equal &= bitcast(vertex[axis], uint) == bitcast(point[axis], uint);
+            if (equal) return true;
+        }
+    }
+    return false;
+}
+
+fn int compare_protected_tetrahedron_points(Vec3 first, Vec3 second) @local {
+    int order = compare_collision_positions(first, second);
+    if (order) return order;
+
+    for (uint axis = 0; axis < SPACE_AXES; axis++) {
+        uint left = bitcast(first[axis], uint);
+        uint right = bitcast(second[axis], uint);
+        if (left != right) return left < right ? -1 : 1;
+    }
+    return 0;
+}

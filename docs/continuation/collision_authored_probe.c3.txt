@@ -1,0 +1,68 @@
+module c3d::physics::fracture;
+
+import c3d;
+import std::math;
+import std::io;
+
+fn void test_collision_authored_face_center_limit128() @test {
+    authored_face_center_probe(128);
+}
+
+fn void test_collision_authored_face_center_limit4() @test {
+    authored_face_center_probe(4);
+}
+
+fn void authored_face_center_probe(uint limit) @local {
+    FractureWorkspace workspace = collision_test_workspace();
+    defer destroy_fracture_workspace(&workspace);
+    ContainmentFixture source;
+    append_box_fixture(&source, { -1, -1, -1 }, { 1, 1, 1 });
+
+    uint[30] remaining;
+    remaining[..] = source.indices[6:30];
+    uint[12] fan = { 0, 2, 8, 2, 6, 8, 6, 4, 8, 4, 0, 8 };
+    source.indices[:12] = fan[..];
+    source.indices[12:30] = remaining[..];
+    source.positions[8] = { 0, 0, -1 };
+    source.identities[8] = 8;
+    source.vertex_count = 9;
+    source.triangle_count = 14;
+    source.mesh.geometry.positions = source.positions[:9];
+    source.mesh.geometry.indices = source.indices[:42];
+    source.mesh.topology_vertices = source.identities[:9];
+    source.mesh.triangle_materials = source.materials[:14];
+
+    SolidScratch scratch = begin_solid_scratch(&workspace);
+    SolidDiagnostic diagnostic;
+    ValidatedSolid validated = validate_solid(
+        scratch: &scratch, source: source.mesh, grid: null, diagnostic: &diagnostic,
+    )!!;
+    assert(validated.surface.validated && validated.surface.topology.vertices.len == 9);
+
+    FracturePieceView piece = { .mesh = source.mesh };
+    FractureResult fragments = copy_fracture_result(mem, (&piece)[:1])!!;
+    defer destroy_fracture_result(&fragments);
+    FractureCollision collision = create_fracture_collision(
+        allocator: mem, workspace: &workspace, fragments: &fragments, max_hull_vertices: limit,
+    )!!;
+    defer destroy_fracture_collision(&collision);
+
+    uint retained;
+    uint center_copies;
+    foreach (uint index, position : source.positions[:9]) {
+        bool found;
+        foreach (hull : collision.hulls) foreach (point : hull.points) {
+            bool equal = true;
+            for (uint axis = 0; axis < SPACE_AXES; axis++) {
+                equal &= bitcast(position[axis], uint) == bitcast(point[axis], uint);
+            }
+            found |= equal;
+            if (index == 8 && equal) center_copies++;
+        }
+        retained += found ? 1 : 0;
+        if (!found) io::printfn("missing_source_index=%d", index);
+    }
+
+    io::printfn("authored_center limit=%d hulls=%d retained=%d/9 center_copies=%d", limit, collision.hulls.len, retained, center_copies);
+    assert(retained == 9);
+}
